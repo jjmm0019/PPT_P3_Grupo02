@@ -12,11 +12,6 @@ public class ObtainIP
 	{
 		mSocket = rSocket;
 	}
-	
-	/**
-	 * it will identify if it is a IPv4 or a IPv6 and will split it for just taking the IP
-	 * @return it will return the IP, without port
-	 */
 	public String getIP(){
 		String auxIP = mSocket.getRemoteSocketAddress().toString();
 		String auxIP2 = auxIP.substring(1, auxIP.length());

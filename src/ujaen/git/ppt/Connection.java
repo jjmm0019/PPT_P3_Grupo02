@@ -25,6 +25,7 @@ import ujaen.git.ppt.mail.Mailbox;
 
 public class Connection implements Runnable, RFC5322 {
 
+	public static final int S_NOCOMMAND = -1;
 	public static final int S_HELO = 0;
 	public static final int S_EHLO = 1;
 	public static final int S_MAIL = 2;
@@ -204,11 +205,94 @@ public class Connection implements Runnable, RFC5322 {
 
 					// TODO montar la respuesta
 					// El servidor responde con lo recibido
-					outputData = RFC5321.getReply(RFC5321.R_220) + SP + inputData + CRLF;
-					output.write(outputData.getBytes());
-					output.flush();
-
+					
+					switch (mEstado){
+						case S_NOCOMMAND:
+							outputData = RFC5321.getError(RFC5321.E_500_SINTAXERROR) + SP +
+							RFC5321.getErrorMsg(RFC5321.E_500_SINTAXERROR) + CRLF;
+							break;
+						case S_HELO:
+							if(!esHELO){
+								outputData = RFC5321.getReply(RFC5321.R_250) + SP +
+								"Hello." + CRLF;
+								esHELO = true;
+							}
+							else{
+								outputData = RFC5321.getError(RFC5321.E_503_BADSEQUENCE) + SP 
+								+ RFC5321.getErrorMsg(RFC5321.E_503_BADSEQUENCE) + CRLF;
+							}
+							break;
+						case S_EHLO:
+							if(!esHELO){
+								outputData = RFC5321.getReply(RFC5321.R_250) + SP +
+								"Hello." + CRLF;
+								esHELO = true;
+							}
+							else{
+								outputData = RFC5321.getError(RFC5321.E_503_BADSEQUENCE) + SP 
+								+ RFC5321.getErrorMsg(RFC5321.E_503_BADSEQUENCE) + CRLF;
+							}
+							break;
+						case S_MAIL:
+							if(!esHELO || esRCPT){
+								outputData = RFC5321.getError(RFC5321.E_503_BADSEQUENCE) + SP 
+								+ RFC5321.getErrorMsg(RFC5321.E_503_BADSEQUENCE) + CRLF;
+							}
+							else{
+								outputData = RFC5321.getReply(RFC5321.R_250) + SP
+								+ RFC5321.getReplyMsg(RFC5321.R_250) + CRLF;
+							}
+							break;
+						case S_RCPT:
+							if(!esHELO || !esMAIL){
+								outputData = RFC5321.getError(RFC5321.E_503_BADSEQUENCE) + SP 
+								+ RFC5321.getErrorMsg(RFC5321.E_503_BADSEQUENCE) + CRLF;
+							}
+							else if(esHELO && esMAIL && !esRCPT){
+								outputData = RFC5321.getError(RFC5321.E_551_USERNOTLOCAL) + SP
+								+ RFC5321.getErrorMsg(RFC5321.E_551_USERNOTLOCAL) + CRLF;
+							}
+							else if(esHELO && esMAIL && esRCPT){
+								outputData = RFC5321.getReply(RFC5321.R_250) + SP
+								+ RFC5321.getReplyMsg(RFC5321.R_250) + CRLF;
+							}
+							break;
+						case S_DATA:
+							if(esHELO && esMAIL && esRCPT && fDataExec){
+								outputData = RFC5321.getReply(RFC5321.R_354) + SP
+								+ RFC5321.getReplyMsg(RFC5321.R_354) + CRLF;
+							}
+							else if(esHELO && !esMAIL && !esRCPT && mensajeEnviado){
+								outputData = RFC5321.getReply(RFC5321.R_250) + SP
+								+ "Queued." + CRLF;
+								mensajeEnviado = false;
+								mEstado = S_NOCOMMAND;
+							}
+							else if(!esMAIL || !esRCPT){
+								mEstado = S_NOCOMMAND;
+								outputData = RFC5321.getError(RFC5321.E_503_BADSEQUENCE) + SP
+								+ RFC5321.getErrorMsg(RFC5321.E_503_BADSEQUENCE) + CRLF;
+							}
+							break;
+						case S_RSET:
+							outputData = RFC5321.getReply(RFC5321.R_250) + SP
+							+ RFC5321.getReplyMsg(RFC5321.R_250) + CRLF;
+							break;
+						case S_QUIT:
+							outputData = RFC5321.getReply(RFC5321.R_221) + SP + 
+							RFC5321.getReplyMsg(RFC5321.R_221) + SP + 
+							RFC5321.MSG_BYE + CRLF;
+							break;
+					}
+					if(!(mEstado == S_DATA && !mensajeEnviado) || (mEstado == S_DATA && fDataExec)){
+						if(fDataExec){
+							fDataExec = false;
+						}
+						output.write(outputData.getBytes());
+						output.flush();	
+					}
 				}
+
 				System.out.println("Servidor [Conexión finalizada]> "
 						+ mSocket.getInetAddress().toString() + ":"
 						+ mSocket.getPort());
